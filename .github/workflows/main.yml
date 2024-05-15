@@ -1,14 +1,13 @@
 name: Deploy Java Maven Project
- 
 on:
   push:
     branches:
       - main  # 更改为你的默认分支
- 
+
 jobs:
   build:
     runs-on: ubuntu-latest
- 
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@master
