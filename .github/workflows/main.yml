@@ -6,7 +6,7 @@ on:
       - main  # 更改为你的默认分支
  
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
  
     steps:
