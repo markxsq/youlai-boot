@@ -1,18 +1,19 @@
 package com.youlai.system.model.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.*;
+
 import java.io.Serializable;
-import java.util.Date;
+import java.time.LocalDateTime;
+
+import com.youlai.system.enums.LogModuleEnum;
 import lombok.Data;
 
 /**
- * 系统日志
- * @TableName sys_log
+ * 系统日志 实体类
+ *
+ * @author Ray
+ * @since 2.10.0
  */
-@TableName(value ="sys_log")
 @Data
 public class SysLog implements Serializable {
     /**
@@ -22,6 +23,53 @@ public class SysLog implements Serializable {
     private Long id;
 
     /**
+     * 日志模块
+     */
+    private LogModuleEnum module;
+
+
+    /**
+     * 日志内容
+     */
+    private String content;
+
+    /**
+     * 请求路径
+     */
+    private String requestUri;
+
+    /**
+     * 请求方法
+     */
+    private String method;
+
+    /**
+     * IP 地址
+     */
+    private String ip;
+
+    /**
+     * 地区
+     */
+    private String region;
+
+    /**
+     * 浏览器
+     */
+    private String browser;
+
+    /**
+     * 终端系统
+     */
+    private String os;
+
+    /**
+     * 执行时间(毫秒)
+     */
+    private Long executionTime;
+
+
+    /**
      * 创建人ID
      */
     private Long createBy;
@@ -29,23 +77,8 @@ public class SysLog implements Serializable {
     /**
      * 创建时间
      */
-    private Date createTime;
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createTime;
 
-    /**
-     * 修改人ID
-     */
-    private Long updateBy;
 
-    /**
-     * 更新时间
-     */
-    private Date updateTime;
-
-    /**
-     * 逻辑删除标识(1-已删除 0-未删除)
-     */
-    private Integer isDeleted;
-
-    @TableField(exist = false)
-    private static final long serialVersionUID = 1L;
 }
