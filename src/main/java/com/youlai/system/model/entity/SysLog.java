@@ -49,14 +49,24 @@ public class SysLog implements Serializable {
     private String ip;
 
     /**
-     * 地区
+     * 省份
      */
-    private String region;
+    private String province;
+
+    /**
+     * 城市
+     */
+    private String city;
 
     /**
      * 浏览器
      */
     private String browser;
+
+    /**
+     * 浏览器版本
+     */
+    private String browserVersion;
 
     /**
      * 终端系统
