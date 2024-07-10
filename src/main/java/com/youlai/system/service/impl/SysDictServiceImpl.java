@@ -14,7 +14,7 @@ import com.youlai.system.model.entity.SysDictItem;
 import com.youlai.system.common.model.Option;
 import com.youlai.system.mapper.SysDictMapper;
 import com.youlai.system.model.form.DictForm;
-import com.youlai.system.model.query.DictTypePageQuery;
+import com.youlai.system.model.query.DictPageQuery;
 import com.youlai.system.model.vo.DictPageVO;
 import com.youlai.system.service.SysDictItemService;
 import com.youlai.system.service.SysDictService;
@@ -45,7 +45,7 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
      * @param queryParams 分页查询对象
      */
     @Override
-    public Page<DictPageVO> getDictPage(DictTypePageQuery queryParams) {
+    public Page<DictPageVO> getDictPage(DictPageQuery queryParams) {
         // 查询参数
         int pageNum = queryParams.getPageNum();
         int pageSize = queryParams.getPageSize();
@@ -114,14 +114,14 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
     public boolean updateDict(Long id, DictForm dictForm) {
         // 更新字典
         SysDict entity = dictConverter.convertToEntity(dictForm);
-        
+
         // 校验 code 是否唯一
         long count = this.count(new LambdaQueryWrapper<SysDict>()
                 .eq(SysDict::getCode, entity.getCode())
                 .ne(SysDict::getId, id)
         );
         Assert.isTrue(count == 0, "字典编码已存在");
-        
+
         boolean result = this.updateById(entity);
 
         if (result) {
@@ -187,7 +187,10 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
             boolean result = this.removeById(id);
             if (result) {
                 // 删除字典下的字典项
-                dictItemService.removeByDictId(Convert.toLong(id));
+                dictItemService.remove(
+                        new LambdaQueryWrapper<SysDictItem>()
+                                .eq(SysDictItem::getDictId, id)
+                );
             }
         }
     }
@@ -201,7 +204,7 @@ public class SysDictServiceImpl extends ServiceImpl<SysDictMapper, SysDict> impl
     public List<Option> listDictItemsByCode(String code) {
         // 根据字典编码获取字典ID
         SysDict dict = this.getOne(new LambdaQueryWrapper<SysDict>()
-                        .eq(SysDict::getCode, code)
+                .eq(SysDict::getCode, code)
                 .select(SysDict::getId)
                 .last("limit 1")
         );
