@@ -20,11 +20,32 @@
             <if test="queryParams.keywords != null and queryParams.keywords.trim() neq ''">
                 AND TABLE_NAME LIKE CONCAT('%',#{queryParams.keywords},'%')
             </if>
+        <!-- 排除的表 -->
+        <if test="queryParams.excludeTables != null and queryParams.excludeTables.size() > 0">
+            AND TABLE_NAME NOT IN
+            <foreach collection="queryParams.excludeTables" item="excludeTable" open="(" close=")" separator=",">
+                #{excludeTable}
+            </foreach>
+        </if>
         ORDER BY
             CREATE_TIME DESC
     </select>
 
-    <select id="getTableColumns" resultType="com.youlai.system.model.vo.TableColumnVO">
+    <select id="getTableMetadata" resultType="com.youlai.system.model.bo.TableMetaData">
+        SELECT
+            TABLE_NAME ,
+            TABLE_COMMENT ,
+            TABLE_COLLATION,
+            ENGINE,
+            CREATE_TIME
+        FROM
+            information_schema.tables
+        WHERE
+            TABLE_SCHEMA = (SELECT DATABASE())
+          AND TABLE_NAME = #{tableName}
+    </select>
+
+    <select id="getTableColumns" resultType="com.youlai.system.model.bo.ColumnMetaData">
         SELECT
             COLUMN_NAME,
             DATA_TYPE,
@@ -40,4 +61,6 @@
             TABLE_SCHEMA = (SELECT DATABASE())
             AND TABLE_NAME = #{tableName}
     </select>
+
+
 </mapper>
