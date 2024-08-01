@@ -1,6 +1,7 @@
 package com.youlai.system.model.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -40,12 +41,17 @@ public class GenFieldConfig extends BaseEntity {
     /**
      * 字段长度
      */
-    private String columnLength;
+    private Integer maxLength;
 
     /**
      * 字段名称
      */
     private String fieldName;
+
+    /**
+     * 字段排序
+     */
+    private Integer fieldSort;
 
     /**
      * 字段类型
@@ -87,7 +93,6 @@ public class GenFieldConfig extends BaseEntity {
      */
     private Integer isRequired;
 
-
     /**
      * TypeScript类型
      */
@@ -95,11 +100,8 @@ public class GenFieldConfig extends BaseEntity {
     @JsonIgnore
     private String tsType;
 
-
     /**
      * 字典类型
      */
     private String dictType;
-
-
 }

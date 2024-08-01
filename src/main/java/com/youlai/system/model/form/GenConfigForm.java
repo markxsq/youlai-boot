@@ -38,6 +38,9 @@ public class GenConfigForm {
     @Schema(description = "作者",example = "youlaitech")
     private String author;
 
+    @Schema(description = "上级菜单ID",example = "1")
+    private Long parentMenuId;
+
     @Schema(description = "字段配置列表")
     private List<FieldConfig> fieldConfigs;
 
@@ -57,6 +60,9 @@ public class GenConfigForm {
         @Schema(description = "字段名")
         private String fieldName;
 
+        @Schema(description = "字段排序")
+        private Integer fieldSort;
+
         @Schema(description = "字段类型")
         private String fieldType;
 
@@ -74,6 +80,9 @@ public class GenConfigForm {
 
         @Schema(description = "是否必填")
         private Integer isRequired;
+
+        @Schema(description = "最大长度")
+        private Integer maxLength;
 
         @Schema(description = "表单类型")
         private FormTypeEnum formType;

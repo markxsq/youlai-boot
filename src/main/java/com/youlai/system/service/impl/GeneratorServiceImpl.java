@@ -30,11 +30,13 @@ import com.youlai.system.model.vo.TablePageVO;
 import com.youlai.system.service.GeneratorService;
 import com.youlai.system.service.GenConfigService;
 import com.youlai.system.service.GenFieldConfigService;
+import com.youlai.system.service.SysMenuService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 数据库服务实现类
@@ -51,6 +53,7 @@ public class GeneratorServiceImpl implements GeneratorService {
     private final GenConfigService genConfigService;
     private final GenFieldConfigService genFieldConfigService;
     private final GenConfigConverter genConfigConverter;
+    private final SysMenuService menuService;
 
     /**
      * 数据表分页列表
@@ -112,9 +115,11 @@ public class GeneratorServiceImpl implements GeneratorService {
         if (CollectionUtil.isNotEmpty(tableColumns)) {
             // 查询字段生成配置
             List<GenFieldConfig> fieldConfigList = genFieldConfigService.list(
-                    new LambdaQueryWrapper<>(GenFieldConfig.class)
+                    new LambdaQueryWrapper<GenFieldConfig>()
                             .eq(GenFieldConfig::getConfigId, genConfig.getId())
+                            .orderByAsc(GenFieldConfig::getFieldSort)
             );
+            Integer maxSort = fieldConfigList.stream().map(GenFieldConfig::getFieldSort).max(Integer::compareTo).orElseGet(() -> 0);
             for (ColumnMetaData tableColumn : tableColumns) {
                 // 根据列名获取字段生成配置
                 String columnName = tableColumn.getColumnName();
@@ -122,7 +127,9 @@ public class GeneratorServiceImpl implements GeneratorService {
                         .filter(item -> StrUtil.equals(item.getColumnName(), columnName))
                         .findFirst()
                         .orElseGet(() -> createDefaultFieldConfig(tableColumn));
-
+                if (genFieldConfig.getFieldSort() == null) {
+                    genFieldConfig.setFieldSort(++maxSort);
+                }
                 // 根据列类型设置字段类型
                 String fieldType = genFieldConfig.getFieldType();
                 if (StrUtil.isBlank(fieldType)) {
@@ -132,26 +139,28 @@ public class GeneratorServiceImpl implements GeneratorService {
                 genFieldConfigs.add(genFieldConfig);
             }
         }
-        GenConfigForm configFormData = genConfigConverter.toGenConfigForm(genConfig, genFieldConfigs);
-        return configFormData;
+        //对genFieldConfigs按照fieldSort排序
+        genFieldConfigs = genFieldConfigs.stream().sorted(Comparator.comparing(GenFieldConfig::getFieldSort)).collect(Collectors.toList());
+        return genConfigConverter.toGenConfigForm(genConfig, genFieldConfigs);
     }
 
 
     /**
      * 创建默认字段配置
      *
-     * @param tableColumn 表字段元数据
+     * @param columnMetaData 表字段元数据
      * @return
      */
-    private GenFieldConfig createDefaultFieldConfig(ColumnMetaData tableColumn) {
+    private GenFieldConfig createDefaultFieldConfig(ColumnMetaData columnMetaData) {
         GenFieldConfig fieldConfig = new GenFieldConfig();
-        fieldConfig.setColumnName(tableColumn.getColumnName());
-        fieldConfig.setColumnType(tableColumn.getDataType());
-        fieldConfig.setFieldComment(tableColumn.getColumnComment());
-        fieldConfig.setFieldName(StrUtil.toCamelCase(tableColumn.getColumnName()));
-        fieldConfig.setIsRequired("YES".equals(tableColumn.getIsNullable()) ? 1 : 0);
+        fieldConfig.setColumnName(columnMetaData.getColumnName());
+        fieldConfig.setColumnType(columnMetaData.getDataType());
+        fieldConfig.setFieldComment(columnMetaData.getColumnComment());
+        fieldConfig.setFieldName(StrUtil.toCamelCase(columnMetaData.getColumnName()));
+        fieldConfig.setIsRequired("YES".equals(columnMetaData.getIsNullable()) ? 1 : 0);
         fieldConfig.setFormType(FormTypeEnum.INPUT);
         fieldConfig.setQueryType(QueryTypeEnum.EQ);
+        fieldConfig.setMaxLength(columnMetaData.getCharacterMaximumLength());
         return fieldConfig;
     }
 
@@ -165,6 +174,12 @@ public class GeneratorServiceImpl implements GeneratorService {
         GenConfig genConfig = genConfigConverter.toGenConfig(formData);
         genConfigService.saveOrUpdate(genConfig);
 
+        // 如果选择上级菜单
+        Long parentMenuId = formData.getParentMenuId();
+        if (parentMenuId != null) {
+            menuService.addMenuForCodeGeneration(parentMenuId,genConfig.getBusinessName(),genConfig.getEntityName());
+        }
+
         List<GenFieldConfig> genFieldConfigs = genConfigConverter.toGenFieldConfig(formData.getFieldConfigs());
 
         if (CollectionUtil.isEmpty(genFieldConfigs)) {
@@ -174,6 +189,27 @@ public class GeneratorServiceImpl implements GeneratorService {
             genFieldConfig.setConfigId(genConfig.getId());
         });
         genFieldConfigService.saveOrUpdateBatch(genFieldConfigs);
+    }
+
+    /**
+     * 删除代码生成配置
+     *
+     * @param tableName 表名
+     * @return
+     */
+    @Override
+    public void deleteGenConfig(String tableName) {
+        GenConfig genConfig = genConfigService.getOne(new LambdaQueryWrapper<GenConfig>()
+                .eq(GenConfig::getTableName, tableName));
+
+        boolean result = genConfigService.remove(new LambdaQueryWrapper<GenConfig>()
+                .eq(GenConfig::getTableName, tableName)
+        );
+        if (result) {
+            genFieldConfigService.remove(new LambdaQueryWrapper<GenFieldConfig>()
+                    .eq(GenFieldConfig::getConfigId, genConfig.getId())
+            );
+        }
     }
 
 
@@ -195,6 +231,8 @@ public class GeneratorServiceImpl implements GeneratorService {
 
         List<GenFieldConfig> fieldConfigs = genFieldConfigService.list(new LambdaQueryWrapper<GenFieldConfig>()
                 .eq(GenFieldConfig::getConfigId, genConfig.getId())
+                .orderByAsc(GenFieldConfig::getFieldSort)
+
         );
         Assert.isTrue(CollectionUtil.isNotEmpty(fieldConfigs), "未找到字段生成配置");
 
@@ -224,7 +262,7 @@ public class GeneratorServiceImpl implements GeneratorService {
             // controller
             String subPackageName = templateConfig.getPackageName();
             // 文件路径 com.youlai.system.controller
-            String filePath = getFilePath(templateName, packageName, subPackageName,entityName);
+            String filePath = getFilePath(templateName, packageName, subPackageName, entityName);
             previewVO.setPath(filePath);
 
             /* 3. 生成文件内容 */
@@ -258,7 +296,7 @@ public class GeneratorServiceImpl implements GeneratorService {
         return entityName + templateName + extension;
     }
 
-    private String getFilePath(String templateName, String packageName, String subPackageName,String entityName) {
+    private String getFilePath(String templateName, String packageName, String subPackageName, String entityName) {
         String path;
         if ("MapperXml".equals(templateName)) {
             path = (generatorProperties.getBackendAppName()
@@ -266,19 +304,19 @@ public class GeneratorServiceImpl implements GeneratorService {
                     + "src" + File.separator + "main" + File.separator + "resources"
                     + File.separator + subPackageName
             );
-        } else if ("API".equals(templateName)  ) {
+        } else if ("API".equals(templateName)) {
             path = (generatorProperties.getFrontendAppName()
                     + File.separator
                     + "src" + File.separator + subPackageName
             );
-        } else if("VIEW".equals(templateName)){
+        } else if ("VIEW".equals(templateName)) {
             path = (generatorProperties.getFrontendAppName()
                     + File.separator
                     + "src" + File.separator + subPackageName
                     + File.separator
                     + StrUtil.toSymbolCase(entityName, '-')
             );
-        }else {
+        } else {
             path = (generatorProperties.getBackendAppName()
                     + File.separator
                     + "src" + File.separator + "main" + File.separator + "java"
@@ -316,12 +354,26 @@ public class GeneratorServiceImpl implements GeneratorService {
         bindMap.put("businessName", genConfig.getBusinessName());
         bindMap.put("fieldConfigs", fieldConfigs);
 
+        boolean hasLocalDateTime = false;
+        boolean hasBigDecimal = false;
+        boolean hasRequiredField = false;
+
         for (GenFieldConfig fieldConfig : fieldConfigs) {
-            bindMap.put("hasLocalDateTime", "LocalDateTime".equals(fieldConfig.getFieldType()));
-            bindMap.put("hasBigDecimal", "BigDecimal".equals(fieldConfig.getFieldType()));
-            bindMap.put("hasRequiredField", ObjectUtil.equals(fieldConfig.getIsRequired(), 1));
+            if ("LocalDateTime".equals(fieldConfig.getFieldType())) {
+                hasLocalDateTime = true;
+            }
+            if ("BigDecimal".equals(fieldConfig.getFieldType())) {
+                hasBigDecimal = true;
+            }
+            if (ObjectUtil.equals(fieldConfig.getIsRequired(), 1)) {
+                hasRequiredField = true;
+            }
             fieldConfig.setTsType(JavaTypeEnum.getTsTypeByJavaType(fieldConfig.getFieldType()));
         }
+
+        bindMap.put("hasLocalDateTime", hasLocalDateTime);
+        bindMap.put("hasBigDecimal", hasBigDecimal);
+        bindMap.put("hasRequiredField", hasRequiredField);
 
         TemplateEngine templateEngine = TemplateUtil.createEngine(new TemplateConfig("templates", TemplateConfig.ResourceMode.CLASSPATH));
         Template template = templateEngine.getTemplate(templateConfig.getTemplatePath());
