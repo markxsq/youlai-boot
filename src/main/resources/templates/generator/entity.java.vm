@@ -1,4 +1,4 @@
-package ${package}.model.entity;
+package ${packageName}.${moduleName}.${subpackageName};
 
 import lombok.Getter;
 import lombok.Setter;
@@ -25,11 +25,13 @@ public class ${entityName} extends BaseEntity {
     private static final long serialVersionUID = 1L;
 
 #foreach($fieldConfig in ${fieldConfigs})
-#if("$!fieldConfig.fieldComment" != "")
+    #if(!$fieldConfig.fieldName.equals("id") && !$fieldConfig.fieldName.equals("createTime") && !$fieldConfig.fieldName.equals("updateTime"))
+        #if("$!fieldConfig.fieldComment" != "")
     /**
      * ${fieldConfig.fieldComment}
      */
-#end
+        #end
     private ${fieldConfig.fieldType} ${fieldConfig.fieldName};
+    #end
 #end
 }

@@ -32,11 +32,16 @@ import com.youlai.system.service.GenConfigService;
 import com.youlai.system.service.GenFieldConfigService;
 import com.youlai.system.service.SysMenuService;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.io.IOUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.zip.ZipOutputStream;
+
 
 /**
  * 数据库服务实现类
@@ -54,6 +59,9 @@ public class GeneratorServiceImpl implements GeneratorService {
     private final GenFieldConfigService genFieldConfigService;
     private final GenConfigConverter genConfigConverter;
     private final SysMenuService menuService;
+
+    @Value("${spring.profiles.active}")
+    private String springProfilesActive ;
 
     /**
      * 数据表分页列表
@@ -101,7 +109,8 @@ public class GeneratorServiceImpl implements GeneratorService {
             genConfig.setEntityName(entityName);
 
             String packageName = SystemApplication.class.getPackageName();
-            genConfig.setPackageName(packageName);
+            genConfig.setPackageName( StrUtil.subBefore(packageName, ".", true));
+            genConfig.setModuleName(StrUtil.subAfter(packageName, ".", true));
 
             genConfig.setAuthor(generatorProperties.getDefaultConfig().getAuthor());
 
@@ -119,7 +128,11 @@ public class GeneratorServiceImpl implements GeneratorService {
                             .eq(GenFieldConfig::getConfigId, genConfig.getId())
                             .orderByAsc(GenFieldConfig::getFieldSort)
             );
-            Integer maxSort = fieldConfigList.stream().map(GenFieldConfig::getFieldSort).max(Integer::compareTo).orElseGet(() -> 0);
+            Integer maxSort = fieldConfigList.stream()
+                    .map(GenFieldConfig::getFieldSort)
+                    .filter(Objects::nonNull) // 过滤掉空值
+                    .max(Integer::compareTo)
+                    .orElse(0);
             for (ColumnMetaData tableColumn : tableColumns) {
                 // 根据列名获取字段生成配置
                 String columnName = tableColumn.getColumnName();
@@ -176,8 +189,8 @@ public class GeneratorServiceImpl implements GeneratorService {
 
         // 如果选择上级菜单
         Long parentMenuId = formData.getParentMenuId();
-        if (parentMenuId != null) {
-            menuService.addMenuForCodeGeneration(parentMenuId,genConfig.getBusinessName(),genConfig.getEntityName());
+        if (parentMenuId != null && springProfilesActive.equals("dev") ) {
+            menuService.saveMenu(parentMenuId,genConfig);
         }
 
         List<GenFieldConfig> genFieldConfigs = genConfigConverter.toGenFieldConfig(formData.getFieldConfigs());
@@ -257,12 +270,14 @@ public class GeneratorServiceImpl implements GeneratorService {
 
 
             /* 2. 生成文件路径 */
-            // com.youlai.system
+            // com.youlai
             String packageName = genConfig.getPackageName();
+            // system
+            String moduleName = genConfig.getModuleName();
             // controller
-            String subPackageName = templateConfig.getPackageName();
-            // 文件路径 com.youlai.system.controller
-            String filePath = getFilePath(templateName, packageName, subPackageName, entityName);
+            String subpackageName = templateConfig.getSubpackageName();
+            // 文件路径  src/main/java/com/youlai/system/controller
+            String filePath = getFilePath(templateName,moduleName, packageName, subpackageName, entityName);
             previewVO.setPath(filePath);
 
             /* 3. 生成文件内容 */
@@ -296,7 +311,7 @@ public class GeneratorServiceImpl implements GeneratorService {
         return entityName + templateName + extension;
     }
 
-    private String getFilePath(String templateName, String packageName, String subPackageName, String entityName) {
+    private String getFilePath(String templateName,String moduleName, String packageName, String subPackageName, String entityName) {
         String path;
         if ("MapperXml".equals(templateName)) {
             path = (generatorProperties.getBackendAppName()
@@ -311,16 +326,18 @@ public class GeneratorServiceImpl implements GeneratorService {
             );
         } else if ("VIEW".equals(templateName)) {
             path = (generatorProperties.getFrontendAppName()
-                    + File.separator
-                    + "src" + File.separator + subPackageName
-                    + File.separator
-                    + StrUtil.toSymbolCase(entityName, '-')
+                    + File.separator  + "src"
+                    + File.separator + moduleName
+                    + File.separator + subPackageName
+                    + File.separator + StrUtil.toSymbolCase(entityName, '-')
             );
         } else {
             path = (generatorProperties.getBackendAppName()
                     + File.separator
                     + "src" + File.separator + "main" + File.separator + "java"
-                    + File.separator + packageName + File.separator + subPackageName
+                    + File.separator + packageName
+                    + File.separator + moduleName
+                    + File.separator + subPackageName
             );
         }
 
@@ -344,8 +361,8 @@ public class GeneratorServiceImpl implements GeneratorService {
 
         String entityName = genConfig.getEntityName();
 
-        bindMap.put("package", genConfig.getPackageName());
-        bindMap.put("subPackage", templateConfig.getPackageName());
+        bindMap.put("packageName", genConfig.getPackageName());
+        bindMap.put("moduleName", genConfig.getModuleName());
         bindMap.put("date", DateUtil.format(new Date(), "yyyy-MM-dd HH:mm"));
         bindMap.put("entityName", entityName);
         bindMap.put("tableName", genConfig.getTableName());
@@ -382,5 +399,43 @@ public class GeneratorServiceImpl implements GeneratorService {
         return content;
     }
 
+    /**
+     * 下载代码
+     * @param tableNames 表名，可以支持多张表。
+     * @return 压缩文件字节数组
+     */
+    @Override
+    public byte[] downloadCode(String[] tableNames) {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        ZipOutputStream zip = new ZipOutputStream(outputStream);
+        for (String tableName : tableNames)
+        {
+            generatorCode(tableName, zip);
+        }
+        IOUtils.closeQuietly(zip);
+        return outputStream.toByteArray();
+    }
+
+    /**
+     * 根据表名生成代码并且压缩到zip文件中
+     *
+     * @param tableName 单个表名
+     * @param zip 压缩文件
+     */
+    private void generatorCode(String tableName, ZipOutputStream zip) {
+        List<GeneratorPreviewVO> previewVOList = getTablePreviewData(tableName);
+        for (GeneratorPreviewVO previewVO : previewVOList) {
+            String fileName = previewVO.getFileName();
+            String content = previewVO.getContent();
+            String path = previewVO.getPath();
+            try {
+                zip.putNextEntry(new java.util.zip.ZipEntry(path + File.separator + fileName));
+                zip.write(content.getBytes("UTF-8"));
+                zip.closeEntry();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
 }
